@@ -7,12 +7,17 @@ Whether it’s a quick proof‑of‑concept, a handy automation, or a playful ex
 Educational – learn a new technique or concept.
 Portable – minimal dependencies, easy to run anywhere.
 Entertaining – because hacking should be fun!
+
 🚀 What You’ll Find Here
-Category	Description
+
 🛡️ Pen‑Testing Helpers	Scanners, payload generators, enumeration tools.
+
 🔐 Crypto Toys	Simple encrypt/decrypt utilities, key‑gen scripts.
+
 ⚙️ Automation Hacks	One‑liners for OS hardening, log parsing, network sniffing.
+
 🎲 Playground Projects	“Cool” scripts that showcase quirky tricks (e.g., ASCII art payloads, steganography demos).
+
 Feel free to explore the scripts/ folder – each script comes with its own README explaining usage.
 
 
