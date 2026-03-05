@@ -878,10 +878,6 @@ def _adv_flags(flags: int = 0x06) -> bytes:
     """Flags (type 0x01). 0x06 = LE General Discoverable + BR/EDR not supported."""
     return bytes([0x02, 0x01, flags])
 
-def _adv_uuid16(uuid16: int) -> bytes:
-    """Complete List of 16-bit UUIDs (type 0x03)."""
-    return bytes([0x03, 0x03, uuid16 & 0xFF, (uuid16 >> 8) & 0xFF])
-
 def _adv_manufacturer(company_id: int, payload: bytes) -> bytes:
     """Manufacturer Specific Data (type 0xFF)."""
     data = bytes([company_id & 0xFF, (company_id >> 8) & 0xFF]) + payload
@@ -900,98 +896,285 @@ def _build_payload(*parts: bytes) -> bytes:
 
 
 # ── Device presets ────────────────────────────────────────────────────────────
-# Each preset is a dict with:
-#   name        : display name
+# Each preset dict:
+#   name        : display label
+#   group       : "samsung" | "apple" | "windows" | "android" | "generic"
 #   description : shown in menu
-#   payload_fn  : callable(custom_name) -> bytes (31-byte adv payload)
-#   scan_fn     : optional callable(custom_name) -> bytes (31-byte scan response)
+#   payload_fn  : callable(_ignored_name) -> bytes  (31-byte adv payload)
+#   scan_fn     : optional callable(_ignored_name) -> bytes (31-byte scan rsp)
+#
+# Samsung fast-pair  — company ID 0x0075 (Samsung Electronics)
+# Apple proximity    — company ID 0x004C
+# Windows Swift Pair — company ID 0x0006
+# Android Fast Pair  — service UUID 0xFE2C + 3-byte model ID
+#
+# Payloads are fixed hardware fingerprints; the "name" argument is unused for
+# fast-pair presets because the device name comes from Samsung/Apple/Google's
+# cloud lookup of the model ID embedded in the payload.
 
-def _preset_headphones(name: str) -> bytes:
-    return _build_payload(
-        _adv_flags(0x02),                    # LE General Discoverable
-        _adv_uuid16(0x110B),                 # Audio Sink
-        _adv_uuid16(0x110A),                 # Audio Source
-        _adv_name(name),
-    )
+def _adv_service_data16(uuid16: int, data: bytes) -> bytes:
+    """Service Data — 16-bit UUID (type 0x16)."""
+    body = bytes([uuid16 & 0xFF, (uuid16 >> 8) & 0xFF]) + data
+    return bytes([len(body) + 1, 0x16]) + body
 
-def _preset_headphones_scan(name: str) -> bytes:
-    return _build_payload(
-        _adv_name(name),
-        _adv_tx_power(4),
-    )
+def _adv_uuid16_complete(uuid16: int) -> bytes:
+    """Complete List of 16-bit UUIDs (type 0x03)."""
+    return bytes([0x03, 0x03, uuid16 & 0xFF, (uuid16 >> 8) & 0xFF])
 
-def _preset_heart_rate(name: str) -> bytes:
+# ── Samsung Galaxy Buds presets ───────────────────────────────────────────────
+# Triggers native "Galaxy Buds" pairing card on Samsung/Android phones.
+# company ID 0x0075, adv + scan response both carry manufacturer data.
+
+def _samsung_buds2(_=None):
+    # Galaxy Buds 2
+    adv_data  = bytes.fromhex("42 09 81 02 14 15 03 21 01 09 AB 0C 01 46 06 3C DD 0A 00 00 00 00 A7 00".replace(" ",""))
+    scan_data = bytes.fromhex("00 C3 A3 D7 B1 17 40 52 64 64 00 01 04".replace(" ",""))
+    return _build_payload(_adv_flags(0x06), _adv_manufacturer(0x0075, adv_data))
+
+def _samsung_buds2_scan(_=None):
+    scan_data = bytes.fromhex("00C3A3D7B11740526464000104")
+    return _build_payload(_adv_manufacturer(0x0075, scan_data))
+
+def _samsung_buds2pro(_=None):
+    # Galaxy Buds 2 Pro
+    adv_data = bytes.fromhex("4209810214150321010920000146063CDD0A00000000A700")
+    return _build_payload(_adv_flags(0x06), _adv_manufacturer(0x0075, adv_data))
+
+def _samsung_buds2pro_scan(_=None):
+    scan_data = bytes.fromhex("00C3A3D7B11740526464000104")
+    return _build_payload(_adv_manufacturer(0x0075, scan_data))
+
+def _samsung_budsfe(_=None):
+    # Galaxy Buds FE
+    adv_data = bytes.fromhex("420981021415032101094F000146063CDD0A00000000A700")
+    return _build_payload(_adv_flags(0x06), _adv_manufacturer(0x0075, adv_data))
+
+def _samsung_budsfe_scan(_=None):
+    scan_data = bytes.fromhex("00C3A3D7B11740526464000104")
+    return _build_payload(_adv_manufacturer(0x0075, scan_data))
+
+def _samsung_buds3(_=None):
+    # Galaxy Buds 3
+    adv_data = bytes.fromhex("42098102141503210109BE000146063CDD0A00000000A700")
+    return _build_payload(_adv_flags(0x06), _adv_manufacturer(0x0075, adv_data))
+
+def _samsung_buds3_scan(_=None):
+    scan_data = bytes.fromhex("00C3A3D7B11740526464000104")
+    return _build_payload(_adv_manufacturer(0x0075, scan_data))
+
+# ── Apple proximity presets ───────────────────────────────────────────────────
+# Triggers native "AirPods" / device card popup on iPhone/iPad.
+# company ID 0x004C.  Byte at offset 4 (0-indexed in raw-data) = model nibble.
+
+def _apple_airpods(_=None):
+    raw = bytes.fromhex("071907022075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_airpods_pro(_=None):
+    raw = bytes.fromhex("0719070e2075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_airpods_pro2(_=None):
+    raw = bytes.fromhex("071907142075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_airpods_max(_=None):
+    raw = bytes.fromhex("0719070a2075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_airpods3(_=None):
+    raw = bytes.fromhex("071907132075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_airpods2(_=None):
+    raw = bytes.fromhex("0719070f2075aa3001000045121212000000000000000000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+def _apple_homepod(_=None):
+    raw = bytes.fromhex("04042a0000000f05c10b604c950000100000000000")
+    return _build_payload(_adv_flags(0x1A), _adv_manufacturer(0x004C, raw))
+
+# ── Windows Swift Pair presets ────────────────────────────────────────────────
+# Triggers native Swift Pair popup on Windows 10/11.
+# company ID 0x0006 (Microsoft).  Format: 03 00 <pairing_mode> <utf8 name hex>
+
+def _windows_swiftpair(name: str = "My BT Device") -> bytes:
+    name_hex = name.encode("utf-8")[:20]
+    payload  = bytes([0x03, 0x00, 0x08]) + name_hex
+    return _build_payload(_adv_flags(0x06), _adv_manufacturer(0x0006, payload))
+
+# ── Android Fast Pair presets ─────────────────────────────────────────────────
+# Triggers Google Fast Pair popup on Android 6+.
+# Uses service UUID 0xFE2C + 3-byte model ID.  Google resolves the model ID
+# to a device name + image from their cloud database.
+
+def _android_fastpair_svc(model_id_bytes: bytes) -> bytes:
+    """Build adv payload with Fast Pair service data."""
     return _build_payload(
         _adv_flags(0x06),
-        _adv_uuid16(0x180D),                 # Heart Rate Service
+        _adv_tx_power(0),
+        _adv_uuid16_complete(0xFE2C),
+        _adv_service_data16(0xFE2C, model_id_bytes),
+    )
+
+def _android_pixel_buds(_=None):
+    return _android_fastpair_svc(bytes.fromhex("92BBBD"))
+
+def _android_jbl_flip6(_=None):
+    return _android_fastpair_svc(bytes.fromhex("821F66"))
+
+def _android_sony_xm5(_=None):
+    return _android_fastpair_svc(bytes.fromhex("D446A7"))
+
+def _android_bose_nc700(_=None):
+    return _android_fastpair_svc(bytes.fromhex("CD8256"))
+
+def _android_jbl_buds_pro(_=None):
+    return _android_fastpair_svc(bytes.fromhex("F52494"))
+
+# ── Generic presets ───────────────────────────────────────────────────────────
+
+def _preset_generic_audio(name: str) -> bytes:
+    return _build_payload(
+        _adv_flags(0x06),
+        _adv_uuid16_complete(0x110B),
         _adv_name(name),
     )
 
-def _preset_keyboard(name: str) -> bytes:
-    return _build_payload(
-        _adv_flags(0x06),
-        _adv_uuid16(0x1812),                 # HID
-        _adv_name(name),
-    )
+def _preset_generic_audio_scan(name: str) -> bytes:
+    return _build_payload(_adv_name(name), _adv_tx_power(4))
 
-def _preset_fitness(name: str) -> bytes:
-    return _build_payload(
-        _adv_flags(0x06),
-        _adv_uuid16(0x180D),                 # Heart Rate
-        _adv_uuid16(0x1816),                 # Cycling Speed
-        _adv_name(name),
-    )
+def _preset_hid(name: str) -> bytes:
+    return _build_payload(_adv_flags(0x06), _adv_uuid16_complete(0x1812), _adv_name(name))
 
 def _preset_generic(name: str) -> bytes:
-    return _build_payload(
-        _adv_flags(0x06),
-        _adv_uuid16(0x1800),                 # Generic Access
-        _adv_name(name),
-    )
+    return _build_payload(_adv_flags(0x06), _adv_uuid16_complete(0x1800), _adv_name(name))
 
-def _preset_custom(name: str) -> bytes:
-    # Built interactively — placeholder replaced at runtime
-    return _build_payload(_adv_flags(0x06), _adv_name(name))
 
+# ── Preset registry ───────────────────────────────────────────────────────────
 
 PRESETS = [
+    # ── Samsung ──────────────────────────────────────────────────────────────
     {
-        "name":        "Bluetooth Headphones",
-        "description": "Audio Sink + Audio Source (A2DP) — shows as headphones/speaker",
-        "payload_fn":  _preset_headphones,
-        "scan_fn":     _preset_headphones_scan,
+        "group": "samsung", "name": "Galaxy Buds 2",
+        "description": "Fast-pair popup on Samsung / Android phones",
+        "payload_fn": _samsung_buds2, "scan_fn": _samsung_buds2_scan,
     },
     {
-        "name":        "Heart Rate Monitor",
-        "description": "Heart Rate Service 0x180D — shows as fitness wearable",
-        "payload_fn":  _preset_heart_rate,
-        "scan_fn":     None,
+        "group": "samsung", "name": "Galaxy Buds 2 Pro",
+        "description": "Fast-pair popup on Samsung / Android phones",
+        "payload_fn": _samsung_buds2pro, "scan_fn": _samsung_buds2pro_scan,
     },
     {
-        "name":        "BLE Keyboard / HID",
-        "description": "HID Service 0x1812 — shows as an input device",
-        "payload_fn":  _preset_keyboard,
-        "scan_fn":     None,
+        "group": "samsung", "name": "Galaxy Buds FE",
+        "description": "Fast-pair popup on Samsung / Android phones",
+        "payload_fn": _samsung_budsfe, "scan_fn": _samsung_budsfe_scan,
     },
     {
-        "name":        "Fitness Tracker",
-        "description": "Heart Rate + Cycling Speed — shows as fitness band",
-        "payload_fn":  _preset_fitness,
-        "scan_fn":     None,
+        "group": "samsung", "name": "Galaxy Buds 3",
+        "description": "Fast-pair popup on Samsung / Android phones",
+        "payload_fn": _samsung_buds3, "scan_fn": _samsung_buds3_scan,
+    },
+    # ── Apple ─────────────────────────────────────────────────────────────────
+    {
+        "group": "apple", "name": "AirPods (1st gen)",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods, "scan_fn": None,
     },
     {
-        "name":        "Generic BLE Device",
-        "description": "Generic Access only — minimal, discoverable by everything",
-        "payload_fn":  _preset_generic,
-        "scan_fn":     None,
+        "group": "apple", "name": "AirPods 2",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods2, "scan_fn": None,
     },
     {
-        "name":        "Custom (build your own)",
-        "description": "Choose name, services, manufacturer data manually",
-        "payload_fn":  None,
-        "scan_fn":     None,
+        "group": "apple", "name": "AirPods 3",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods3, "scan_fn": None,
+    },
+    {
+        "group": "apple", "name": "AirPods Pro",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods_pro, "scan_fn": None,
+    },
+    {
+        "group": "apple", "name": "AirPods Pro 2",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods_pro2, "scan_fn": None,
+    },
+    {
+        "group": "apple", "name": "AirPods Max",
+        "description": "Proximity popup on iPhone / iPad",
+        "payload_fn": _apple_airpods_max, "scan_fn": None,
+    },
+    {
+        "group": "apple", "name": "HomePod Setup",
+        "description": "HomePod setup card on iPhone / iPad",
+        "payload_fn": _apple_homepod, "scan_fn": None,
+    },
+    # ── Windows ───────────────────────────────────────────────────────────────
+    {
+        "group": "windows", "name": "Windows Swift Pair (custom name)",
+        "description": "Swift Pair popup on Windows 10/11 — you set the device name",
+        "payload_fn": _windows_swiftpair, "scan_fn": None,
+    },
+    # ── Android Fast Pair ─────────────────────────────────────────────────────
+    {
+        "group": "android", "name": "Google Pixel Buds",
+        "description": "Fast Pair popup on Android 6+ (Google)",
+        "payload_fn": _android_pixel_buds, "scan_fn": None,
+    },
+    {
+        "group": "android", "name": "JBL Flip 6",
+        "description": "Fast Pair popup on Android 6+",
+        "payload_fn": _android_jbl_flip6, "scan_fn": None,
+    },
+    {
+        "group": "android", "name": "Sony WH-1000XM5",
+        "description": "Fast Pair popup on Android 6+",
+        "payload_fn": _android_sony_xm5, "scan_fn": None,
+    },
+    {
+        "group": "android", "name": "Bose NC 700",
+        "description": "Fast Pair popup on Android 6+",
+        "payload_fn": _android_bose_nc700, "scan_fn": None,
+    },
+    {
+        "group": "android", "name": "JBL Buds Pro",
+        "description": "Fast Pair popup on Android 6+",
+        "payload_fn": _android_jbl_buds_pro, "scan_fn": None,
+    },
+    # ── Generic ───────────────────────────────────────────────────────────────
+    {
+        "group": "generic", "name": "Generic Audio Device",
+        "description": "Audio Sink — shows in standard BT scanners on any OS",
+        "payload_fn": _preset_generic_audio, "scan_fn": _preset_generic_audio_scan,
+    },
+    {
+        "group": "generic", "name": "BLE HID / Keyboard",
+        "description": "HID service — shows as input device",
+        "payload_fn": _preset_hid, "scan_fn": None,
+    },
+    {
+        "group": "generic", "name": "Generic BLE Device",
+        "description": "Minimal — discoverable by all BT scanners",
+        "payload_fn": _preset_generic, "scan_fn": None,
+    },
+    # ── Custom ────────────────────────────────────────────────────────────────
+    {
+        "group": "custom", "name": "Custom (build your own)",
+        "description": "Choose services, manufacturer data, TX power manually",
+        "payload_fn": None, "scan_fn": None,
     },
 ]
+
+GROUP_LABELS = {
+    "samsung": f"📱 Samsung",
+    "apple":   f"🍎 Apple",
+    "windows": f"🪟 Windows",
+    "android": f"🤖 Android Fast Pair",
+    "generic": f"📡 Generic BLE",
+    "custom":  f"🔧 Custom",
+}
 
 
 # ── HCI helpers ───────────────────────────────────────────────────────────────
@@ -1189,26 +1372,43 @@ async def advertise_menu():
         idx = IntPrompt.ask(f"  [{CYAN}]Select interface[/]", default=1) - 1
         iface = interfaces[max(0, min(idx, len(interfaces)-1))]
 
-    # Show preset menu
+    # Show preset menu grouped by platform
     console.print(f"\n  [{CYAN}]Choose a device preset to advertise as:[/]\n")
-    preset_table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {BLUE}", min_width=70)
+    preset_table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {BLUE}", min_width=76)
     preset_table.add_column("#",           style=f"bold {CYAN}", width=4, justify="right")
-    preset_table.add_column("Preset",      style=WHITE, min_width=24)
+    preset_table.add_column("Platform",    style=BLUE, width=20)
+    preset_table.add_column("Device",      style=WHITE, min_width=26)
     preset_table.add_column("Description", style=GREY)
+
+    last_group = None
     for i, p in enumerate(PRESETS, 1):
-        preset_table.add_row(str(i), p["name"], p["description"])
+        group_label = GROUP_LABELS.get(p["group"], p["group"])
+        display_group = group_label if p["group"] != last_group else ""
+        last_group = p["group"]
+        preset_table.add_row(str(i), display_group, p["name"], p["description"])
+
     console.print(preset_table)
 
     preset_idx = IntPrompt.ask(f"\n  [{CYAN}]Select preset[/]", default=1) - 1
     preset_idx = max(0, min(preset_idx, len(PRESETS) - 1))
     preset = PRESETS[preset_idx]
 
-    # Device name
-    default_name = preset["name"] if preset["payload_fn"] else "My BLE Device"
-    device_name = Prompt.ask(
-        f"  [{CYAN}]Device name to broadcast[/]",
-        default=default_name,
-    )
+    # Device name — only meaningful for Windows Swift Pair and Generic/Custom.
+    # For Samsung/Apple/Android the display name comes from the vendor cloud
+    # model lookup; the HCI local name field is ignored by those stacks.
+    needs_name = preset["group"] in ("windows", "generic", "custom")
+    if needs_name:
+        default_name = preset["name"] if preset["payload_fn"] else "My BLE Device"
+        device_name = Prompt.ask(
+            f"  [{CYAN}]Device name to broadcast[/]",
+            default=default_name,
+        )
+    else:
+        device_name = preset["name"]
+        console.print(
+            f"\n  [{GREY}]ℹ  Device name is resolved by {preset['group'].title()} "
+            f"from their cloud model registry — local name field unused.[/]"
+        )
 
     # Advertisement interval
     interval_ms = float(Prompt.ask(
